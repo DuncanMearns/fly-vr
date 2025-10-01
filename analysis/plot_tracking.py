@@ -288,7 +288,7 @@ for subDir in tqdm(subDirs):
     ax2 = fig.add_subplot(spec[2:,2])
     ax0.plot(stimChunks[-1],color='k')
     ax0.axis('off')
-    im = ax1.imshow(speedChunks,aspect='auto',cmap='bwr',norm=colors.CenteredNorm())
+    im = ax1.imshow(speedChunks,aspect='auto',cmap='bwr',norm=colors.CenteredNorm(), vmin=-20, vmax=20)
     ax1.set_xticks([0,args.nSamples])
     ax1.set_xticklabels([0,f'{trialTime:.0f}'])
     ax1.set_yticks(trialIDs[uniqueTimestamps])

@@ -330,8 +330,8 @@ class ActuatorStim(VideoStim):
         self.timer = 0 # time relative to start time 
         self.t0 = time.time() # start time 
         self.pauseDur = 10 # second pause duration to allow fly to tap 
-        self.trialDur = 300000 # second period where the female fly moves around
-        self.isPaused = False # flag for whether or not pause period is on 
+        self.isPaused = True # flag for whether or not pause period is on 
+        self.fudge = 7.5
 
         # mfDist data
         dataPath = package_data_filename('tracking.mat')
@@ -343,10 +343,10 @@ class ActuatorStim(VideoStim):
         self.fFV = resample(self.fFV,int(len(self.fFV)/0.33))
         
         # load backnforth component
+        self.angleScaling = angleScaling
         f = loadmat(package_data_filename(filePath))
-        self.femaleAngle = f['x'].flatten()/angleScaling
-        self.femaleAngle = resample(self.femaleAngle,int(len(self.femaleAngle)/0.5)) 
-
+        self.femaleAngle = f['x'].flatten()
+        self.femaleAngle = angleScaling*resample(self.femaleAngle,int(1.5*len(self.femaleAngle))) 
         
         # set the device max speed
         DeviceDefinition.max_speed = Measurement(value=np.max(self.fFV),unit=Units.LENGTH_MILLIMETRES)
@@ -362,6 +362,7 @@ class ActuatorStim(VideoStim):
             raise AttributeError('no connection')
         
         self.adjust = 0 # protects against index out of bound error 
+        self.adjustAngle = 0 # protects against index out of bound error 
             
 
     def convert_px_f_2_px_s(self,x):
@@ -403,50 +404,45 @@ class ActuatorStim(VideoStim):
         super().initialize(win, fps, flyvr_shared_state)
         self.sharedState = flyvr_shared_state
         win.winHandle.minimize() # minimise the PsychoPy window for this experiment: we don't need a visual stimulus
-           
-        # # move x axis to closest position and y axis to middle 
-        # self.axisX.move_absolute(12.5,Units.LENGTH_MILLIMETRES)
-        # self.axisY.move_absolute(25,Units.LENGTH_MILLIMETRES)
-
 
     def update(self, win, logger, frame_num):
 
         # adjust frame number if overflow
         if frame_num - self.adjust >= len(self.mfDist):
             self.adjust += len(self.mfDist)
+
+        if frame_num - self.adjustAngle >= len(self.femaleAngle):
+            self.adjustAngle+=len(self.femaleAngle)
         
+        frame_num_angle = frame_num 
         frame_num -= self.adjust # adjust the frame number to prevent overflow 
 
         # update timer 
         self.timer = time.time() - self.t0
 
-        # trigger the pause durtion so male can tap female
-        if self.timer >= self.trialDur and not self.isPaused: 
+        # trigger the pause duration so male can tap female
+        if self.timer < self.pauseDur: 
             self.isPaused = True 
-            self.t0 = time.time() # reset reference time 
-            self.timer = 0
+
+        else:
+            self.isPaused = False 
 
         # female fly is positioned in front of male to allow tapping 
-        if self.isPaused and self.timer < self.pauseDur:
-            distance = 23.5
+        if self.isPaused:
+            distance = 0
             lateral = 12.5 
         
         # otherwise move the female 
         else:
-            distance = self.map_lateral(self.map_distance(self.clip_range(self.mfDist[frame_num])),originalRange=(0,25),newRange=(24,25)) # forward distance
-            lateral = self.map_lateral(self.femaleAngle[frame_num]) # lateral distance 
-
-        # re-enter the movement phase if pause duration is exceeded
-        if self.isPaused and self.timer >= self.pauseDur:
-            self.isPaused = False 
-            self.t0 = time.time()
-            self.timer = 0
+            distance = self.map_lateral(self.map_distance(self.clip_range(self.mfDist[frame_num])),originalRange=(0,25),newRange=(23-self.fudge,25-self.fudge)) # forward distance
+            lateral = self.map_lateral(self.femaleAngle[frame_num_angle-self.adjustAngle]) # lateral distance 
+            # print((distance,lateral))
 
         # move actuators 
         self.axisX.move_absolute(lateral,Units.LENGTH_MILLIMETRES,wait_until_idle = False)
         self.axisY.move_absolute(distance,Units.LENGTH_MILLIMETRES,wait_until_idle = False)
 
-        print((self.isPaused,self.timer),flush=True)
+        # print((self.isPaused,self.timer),flush=True)
 
         # Log data
         self.h5_log(logger, frame_num,

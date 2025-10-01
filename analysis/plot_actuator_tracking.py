@@ -20,6 +20,7 @@ description = '''Plot tracking index for experiment.'''
 parser.add_argument('--dir',type=str,required=True,help='directory containing experiments, or directory for single experiment')
 parser.add_argument('--nCycles',type=int,default=3,help='number of stimulus cycles per trial')
 parser.add_argument('--nSamples',type=int,default=1000,help='samples per trial (resampled)')
+parser.add_argument('--endTrial',required=False, default=None, type=int, help='number of trials to plot')
 
 args = parser.parse_args()
 
@@ -171,28 +172,32 @@ for subDir in tqdm(subDirs):
 
     # Chunk rotational speed
     speedChunks,_,_ = chunkData(rs,nCycles=nCycles,peaks=peaks,dt=avgDT,nSamples=args.nSamples,isSpeed=True,isBacknforth=isBacknforth)
+    # import pdb; pdb.set_trace()
 
     # Compute tracking vigor
     vigor = getTurningVigor(stimChunks,speedChunks)
 
     # Compute tracking fidelity of tracking experiment
     fidelity = getFidelity(stimChunks,speedChunks)
-    TI = vigor*fidelity
+    # TI = vigor*fidelity
     # TI = vigor
     # TI = fidelity
     # import pdb; pdb.set_trace()
     # Save tracking index, vigor, and rotational speed
-    np.save(os.path.join(subDir,'tracking_index.npy'),TI)
-    np.save(os.path.join(subDir,'tracking_vigor.npy'),vigor)
-    np.save(os.path.join(subDir,'rotational_speed.npy'),rs)
 
     # template correlation
     mu = np.mean(speedChunks,axis=0)
     corr = np.array([pearsonr(x,mu)[0] for x in speedChunks])
     trialSpeed = abs(np.mean(speedChunks,axis=-1))
     trialSpeed/=max(trialSpeed)
-    ti = corr*trialSpeed
-    import pdb; pdb.set_trace()
+    TI = corr*trialSpeed
+    
+    # save data
+    np.save(os.path.join(subDir,'tracking_index.npy'),TI)
+    np.save(os.path.join(subDir,'tracking_vigor.npy'),vigor)
+    np.save(os.path.join(subDir,'rotational_speed.npy'),rs)
+
+    # import pdb; pdb.set_trace()
 
     trialIDs = np.arange(len(vigor))
     trialTimestamps = (trialTime*trialIDs/60).astype(int)
@@ -205,6 +210,9 @@ for subDir in tqdm(subDirs):
     speedChunks*=speedConversion
 
     # Overlay rotational speed and grating direction
+    if args.endTrial is None:
+        args.endTrial = len(speedChunks)
+
     fig = plt.figure(constrained_layout=True)
     spec = fig.add_gridspec(10, 3) # down, across
     ax0 = fig.add_subplot(spec[:2,:2])
@@ -212,7 +220,7 @@ for subDir in tqdm(subDirs):
     ax2 = fig.add_subplot(spec[2:,2])
     ax0.plot(stimChunks[-1],color='k')
     ax0.axis('off')
-    im = ax1.imshow(speedChunks,aspect='auto',cmap='bwr',norm=colors.CenteredNorm())
+    im = ax1.imshow(speedChunks[:args.endTrial],aspect='auto',cmap='bwr',norm=colors.CenteredNorm())
     ax1.set_xticks([0,args.nSamples])
     ax1.set_xticklabels([0,f'{trialTime:.0f}'])
     ax1.set_yticks(trialIDs[uniqueTimestamps])
@@ -222,7 +230,7 @@ for subDir in tqdm(subDirs):
     divider = make_axes_locatable(ax1)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     fig.colorbar(im, cax=cax, orientation='vertical',label='rotational speed (rad/s)')
-    ax2.plot(TI,trialIDs,color='k')
+    ax2.plot(TI[:args.endTrial],trialIDs[:args.endTrial],color='k')
     sns.despine(ax=ax2)
     ax2.invert_yaxis()
     ax2.get_yaxis().set_visible(False)

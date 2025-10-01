@@ -107,7 +107,7 @@ class PhidgetIO(object):
         if self._stack == 0:
             # first time through, just start recording
             # only pulse start high
-            time.sleep(5)
+            time.sleep(25) # delay time 
             self._pulse(self._tp_start, high_time=0.1)
             self._log.debug('pulse start: high_time=0.1')
         elif self._signal_next_enable:
