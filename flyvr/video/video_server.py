@@ -36,6 +36,10 @@ from scipy.io import loadmat
 import time
 from matplotlib import pyplot as plt 
 from zaber_motion import Measurement
+import yaml
+
+from .actuator_stimulus import ActuatorStimulus
+
 
 H5_SYNC_VERSION = 1
 H5_DATA_VERSION = 1
@@ -308,8 +312,9 @@ class VideoStim(object):
 
         logger.log(self._h5_log_name, np.array(row, dtype=np.float64))
 
-class ActuatorStim(VideoStim):
-    NAME = 'actuator'
+
+class ActuatorStimMax(VideoStim):
+    NAME = 'actuator_max'
 
     H5_FIELDS = ('video_output_num_frames',
                  'bg_color',
@@ -362,7 +367,7 @@ class ActuatorStim(VideoStim):
             raise AttributeError('no connection')
         
         self.adjust = 0 # protects against index out of bound error 
-        self.adjustAngle = 0 # protects against index out of bound error 
+        self.adjustAngle = 0 # protects against index out of bound error
             
 
     def convert_px_f_2_px_s(self,x):
@@ -460,6 +465,136 @@ class ActuatorStim(VideoStim):
     def draw(self):
         # self.screen.draw()
         return
+
+
+class ActuatorStimDSM(VideoStim):
+    NAME = 'actuator_dsm'
+
+    H5_FIELDS = ('video_output_num_frames',
+                 'stimulus_output_num_frames',
+                 'stimulus_timestamp_seconds',
+                 'x_position_mm',
+                 'y_position_mm',
+                 'target_angle_degrees',
+                 'target_distance_mm',
+                 'stimulus_phase'
+                 )
+    '''Control a real female on an actuator.'''
+
+    def __init__(self, connection=None, actuator_config=None, stimulus=None, **kwargs):
+        '''%% Inputs %%
+       - angleScaling: how much to scale down the side to side motion of the female
+       '''
+        super().__init__(**kwargs)
+
+        # Open actuator config
+        with open(actuator_config, 'r') as f:
+            self.config = yaml.safe_load(f)
+        self.stimulus_fps = self.config["update_rate"]
+
+        # Get connection
+        self.port = connection
+        self.connection = Connection.open_serial_port(self.port)
+        try:
+            device_list = self.connection.detect_devices()
+            device = device_list[0]
+            self.axisX = device.get_axis(1)
+            self.axisY = device.get_axis(2)
+        except:
+            raise AttributeError('no connection')
+
+        # Get speed limits
+        self.max_speed_x = self.axisX.settings.get("maxspeed", Units.VELOCITY_MILLIMETRES_PER_SECOND)
+        self.max_speed_y = self.axisY.settings.get("maxspeed", Units.VELOCITY_MILLIMETRES_PER_SECOND)
+
+        # Generate stimulus
+        if isinstance(stimulus, str) and stimulus.endswith(".npy"):  # stimulus is pre-programmed
+            print("Loading stimulus")
+            self.stimulus = np.load(stimulus)
+        elif isinstance(stimulus, dict):
+            print("Building stimulus")
+            actuator_stimulus_factory = ActuatorStimulus(self.config)
+            self.stimulus = actuator_stimulus_factory(**stimulus)
+        else:
+            raise TypeError('stimulus must be a filepath or dict')
+        self.timestamps = (np.arange(len(self.stimulus)) / self.stimulus_fps)
+
+        # Initialize timer
+        self.t0 = None
+        self.current_frame_number = None
+
+    def initialize(self, win, fps, flyvr_shared_state):
+        super().initialize(win, fps, flyvr_shared_state)
+        win.winHandle.minimize()  # minimise the PsychoPy window for this experiment: we don't need a visual stimulus
+
+    def update(self, win, logger, frame_num):
+
+        # Initialize
+        if self.t0 is None:
+            self.t0 = time.time()
+            self.current_frame_number = 0
+
+        # Check stimulus frame number
+        if self.current_time > self.timestamps[self.current_frame_number]:
+            self.current_frame_number += 1
+        # Check if ended
+        if self.current_frame_number >= len(self.stimulus):
+            return
+
+        # Move actuator
+        self.move()
+
+        target_x, target_y, target_theta, target_dist, phase = self.stimulus[self.current_frame_number]
+
+        # Log data
+        self.h5_log(
+            logger, frame_num,
+            self.current_frame_number, self.current_time, self.current_x, self.current_y,
+            target_theta, target_dist, phase
+        )
+
+    def move(self):
+        # Get current and target position
+        current_x, current_y = self.current_x, self.current_y
+        target_x, target_y, *_ = self.stimulus[self.current_frame_number]
+        dt = self.timestamps[self.current_frame_number] - self.current_time
+        # Calculate speed
+        dx = np.round(target_x - current_x, 3)
+        dy = np.round(target_y - current_y, 3)
+        dt = np.round(dt, 3)
+        velocity_x = 0
+        velocity_y = 0
+        if dt > 0:
+            velocity_x = abs(dx / dt)
+            if velocity_x >= self.max_speed_x:
+                velocity_x = 0
+            velocity_y = abs(dy / dt)
+            if velocity_y >= self.max_speed_y:
+                velocity_y = 0
+        # Move actuators
+        self.axisX.move_absolute(target_x, Units.LENGTH_MILLIMETRES, wait_until_idle=False,
+                                 velocity=velocity_x, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
+        self.axisY.move_absolute(target_y, Units.LENGTH_MILLIMETRES, wait_until_idle=False,
+                                 velocity=velocity_y, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
+
+    def draw(self):
+        return
+
+    @property
+    def is_finished(self):
+        return self.current_frame_number >= len(self.stimulus)
+
+    @property
+    def current_x(self):
+        return self.axisX.get_position(Units.LENGTH_MILLIMETRES)
+
+    @property
+    def current_y(self):
+        return self.axisY.get_position(Units.LENGTH_MILLIMETRES)
+
+    @property
+    def current_time(self):
+        return time.time() - self.t0
 
 
 class NoStim(VideoStim):
@@ -1328,7 +1463,8 @@ class OptModel(VideoStim):
 
 
 STIMS = (NoStim, ContrastStim, GratingStim, MovingSquareStim, LoomingStim, MayaModel, OptModel, PipStim, SweepingSpotStim,
-         AdamStim, AdamStimGrating, LoomingStimCircle, GenericStaticFixationStim, BackNForth, ActuatorStim, CustomStim)
+         AdamStim, AdamStimGrating, LoomingStimCircle, GenericStaticFixationStim, BackNForth, ActuatorStimMax,
+         ActuatorStimDSM, CustomStim)
 
 
 def stimulus_factory(name, **params):
@@ -1570,7 +1706,7 @@ def _ipc_main(q):
     log.debug('exiting')
 
 
-def run_video_server(options,connection=None):
+def run_video_server(options):
     from flyvr.common import SharedState, Randomizer
     from flyvr.common.logger import DatasetLogServerThreaded
 
@@ -1593,11 +1729,6 @@ def run_video_server(options,connection=None):
                 option_item_defn = {id_: defn}
                 continue
 
-            # if connection is not None:
-                #defn['connection'] = connection
-                # stimulus = stimulus_factory(defn.pop('name'), identifier=id_, **defn)
-                # stims.append(stimulus)
-            defn['connection'] = connection
             stims.append(stimulus_factory(defn.pop('name'), identifier=id_, **defn))
 
 

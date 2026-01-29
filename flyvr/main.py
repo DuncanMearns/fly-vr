@@ -21,7 +21,7 @@ from flyvr.hwio.phidget import run_phidget_io
 from flyvr.common.ipc import run_main_relay
 from flyvr.gui import run_main_state_gui
 from flyvr.video.camera_triggering import *
-from zaber_motion.ascii import Connection
+
 
 def _get_fictrac_driver(options, log):
     drv = None
@@ -150,15 +150,7 @@ def main_launcher():
 
     # these are optional
     if options.keepalive_video or options.playlist.get('video'):
-        try: 
-            com = options.actuatorCom
-            task = lambda x: run_video_server(x,connection=com)
-            video = ConcurrentTask(task=task, comms=None, taskinitargs=[options])
-        except:
-            print('no actuator',flush=True)
-            video = ConcurrentTask(task=run_video_server, comms=None, taskinitargs=[options])
-        
-        # video = ConcurrentTask(task=run_video_server, comms=None, taskinitargs=[options])
+        video = ConcurrentTask(task=run_video_server, comms=None, taskinitargs=[options])
         backend_wait.append(BACKEND_VIDEO)
         video.start()
     else:
