@@ -37,29 +37,18 @@ class ActuatorStimulus:
     def polar_to_actuator(self, polar_coords):
         # Account for elevation
         dists = np.clip(polar_coords[:, 1], self.dz_mm, None)
-        dists_act = np.sqrt(np.square(dists) - np.square(self.dz_mm))
+        dists_y = np.sqrt(np.square(dists) - np.square(self.dz_mm))
+        # Compute male position
+        male_xy = np.array([self.actuator_x0, self.actuator_y0 + self.dy_mm])
         # Clip distances
-        dists_act = np.clip(dists_act, self.y_max - self.actuator_y0, None)
-        # Convert polar to cartesian
+        dists_y = np.clip(dists_y, male_xy[1] - self.actuator_y0, None)
+        # Convert polar to cartesian w.r.t. male position
         theta = np.radians(polar_coords[:, 0])
-        xy = np.column_stack([np.sin(theta), np.cos(theta)]) * dists_act[:, None]
-        # Convert to actuator coordinates
-        xy[:, 0] += self.actuator_x0
-        xy[:, 1] = self.y_max - xy[:, 1]
+        xy = np.column_stack([np.sin(theta), np.cos(theta)]) * dists_y[:, None]
+        xy = male_xy - xy
         # Ensure in actuator range
         xy[:, 0] = np.clip(xy[:, 0], 0, self.x_max)
         xy[:, 1] = np.clip(xy[:, 1], 0, self.y_max)
-
-        # # plot stimulus trace
-        # plt.plot(*xy.T)
-        # # plot actuator origin
-        # plt.scatter([self.actuator_x0], [self.actuator_y0])
-        # # plot male position
-        # plt.scatter([self.actuator_x0], [self.actuator_y0 + self.dy_mm])
-        # # plot actuator limit
-        # plt.scatter([self.actuator_x0], [self.y_max])
-        # plt.show()
-
         return xy
 
     def __call__(self, *, angles=None, distances=None, amplitude=2.5, angular_speed=20, linear_speed=10,
@@ -153,11 +142,12 @@ class ActuatorStimulus:
             parts.append(np.column_stack([theta, dist, np.zeros(len(theta))]))  # label = 0 for position
 
         # Add pause to beginning
-        pause_frames = np.zeros((int(pause * self.sample_rate), 3))
-        pause_frames[:, -1] = -1  # label = -1 for pause
+        pause_frames = np.zeros((int(pause * self.sample_rate), 4))
+        pause_frames[:, -2:] = -1  # label = -1 for pause
 
         sequence = [pause_frames]
         parts = iter(parts)
+        k = -1
         while True:
             try:
                 part = next(parts)
@@ -172,28 +162,64 @@ class ActuatorStimulus:
 
             # label = 1 for in-out
             transition1 = np.linspace(d0, d1, int(t_dist * self.sample_rate))
-            transition1 = np.column_stack([np.ones(len(transition1)) * theta0, transition1, np.ones(len(transition1))])
+            transition1 = np.column_stack([
+                np.ones(len(transition1)) * theta0,
+                transition1,
+                np.ones(len(transition1)),
+                np.ones(len(transition1)) * k,
+            ])
             # label = 2 for movement to next position
             transition2 = np.linspace(theta0, theta1, int(t_theta * self.sample_rate))
-            transition2 = np.column_stack([transition2, np.ones(len(transition2)) * d1, np.ones(len(transition2)) * 2])
+            transition2 = np.column_stack([
+                transition2,
+                np.ones(len(transition2)) * d1,
+                np.ones(len(transition2)) * 2,
+                np.ones(len(transition2)) * k,
+            ])
             # Concatenate transitions
             transition = np.vstack([transition1, transition2])
 
             sequence.append(transition)
-            sequence.append(part)
+            k += 1  # increment sequence index when new stimulus starts
+            if (k % (len(angles) * len(distances))) == 0:
+                k = 0
+            sequence.append(np.column_stack([part, np.ones(len(part)) * k]))
 
         # Add pause to end
-        pause_frames = np.zeros((int(pause * self.sample_rate), 3))
-        pause_frames[:, 1] = 100
-        pause_frames[:, -1] = -1  # label = -1 for pause
+        pause_frames = np.zeros((int(pause * self.sample_rate), 4))
+        pause_frames[:, 1] = self.y_max
+        pause_frames[:, -2:] = -1  # label = -1 for pause
         sequence.append(pause_frames)
 
         stimulus = np.concatenate(sequence, axis=0)
         actuator_trace = self.polar_to_actuator(stimulus)
         stimulus = np.hstack([actuator_trace, stimulus])
 
-        # plt.plot(stimulus[:, 0])
-        # plt.plot(stimulus[:, 1])
-        # plt.show()
-
         return stimulus
+
+
+if __name__ == "__main__":
+    import yaml
+    from matplotlib import pyplot as plt
+    with open(r"C:\Users\murthylab\Desktop\Duncan_data\configs\duncan_experiment\actuator_config.yaml") as f:
+        config = yaml.safe_load(f)
+    stim = ActuatorStimulus(config)
+
+    xydt = stim(angles=[-15, 0, 15], distances=[1, 2, 3, 4, 5], amplitude=45, angular_speed=30, linear_speed=10, randomize=True, n_cycles=3, duration=0, n_repetitions=3, pause=5)
+
+    male_xyz = np.array([stim.actuator_x0, stim.actuator_y0 + stim.dy_mm, stim.dz_mm])
+    xyz = np.column_stack([xydt[:, :2], np.zeros(len(xydt))])
+
+    d = np.linalg.norm(xyz - male_xyz, axis=1)
+    plt.plot(xydt[:, 3])
+    plt.plot(xydt[:, 4])
+    plt.plot(xydt[:, 5])
+    # plt.plot(d)
+    # plt.plot(xydt[:, 0])
+    plt.show()
+
+    # fig, ax = plt.subplots()
+    # ax.plot(*xydt[:, :2].T)
+    # ax.scatter([male_xyz[0]], [male_xyz[1]])
+    # ax.set_aspect("equal")
+    # plt.show()

@@ -544,38 +544,38 @@ class ActuatorStimDSM(VideoStim):
         # Move actuator
         self.move()
 
-        target_x, target_y, target_theta, target_dist, phase = self.stimulus[self.current_frame_number]
+        target_x, target_y, target_theta, target_dist, phase, stim_index = self.stimulus[self.current_frame_number]
 
         # Log data
         self.h5_log(
             logger, frame_num,
             self.current_frame_number, self.current_time, self.current_x, self.current_y,
-            target_theta, target_dist, phase
+            target_theta, target_dist, phase, stim_index
         )
 
     def move(self):
         # Get current and target position
-        current_x, current_y = self.current_x, self.current_y
+        # current_x, current_y = self.current_x, self.current_y
         target_x, target_y, *_ = self.stimulus[self.current_frame_number]
-        dt = self.timestamps[self.current_frame_number] - self.current_time
-        # Calculate speed
-        dx = np.round(target_x - current_x, 3)
-        dy = np.round(target_y - current_y, 3)
-        dt = np.round(dt, 3)
-        velocity_x = 0
-        velocity_y = 0
-        if dt > 0:
-            velocity_x = abs(dx / dt)
-            if velocity_x >= self.max_speed_x:
-                velocity_x = 0
-            velocity_y = abs(dy / dt)
-            if velocity_y >= self.max_speed_y:
-                velocity_y = 0
+        # dt = self.timestamps[self.current_frame_number] - self.current_time
+        # # Calculate speed
+        # dx = np.round(target_x - current_x, 3)
+        # dy = np.round(target_y - current_y, 3)
+        # dt = np.round(dt, 3)
+        # velocity_x = 0
+        # velocity_y = 0
+        # if dt > 0:
+        #     velocity_x = abs(dx / dt)
+        #     if velocity_x >= self.max_speed_x:
+        #         velocity_x = 0
+        #     velocity_y = abs(dy / dt)
+        #     if velocity_y >= self.max_speed_y:
+        #         velocity_y = 0
         # Move actuators
-        self.axisX.move_absolute(target_x, Units.LENGTH_MILLIMETRES, wait_until_idle=False,
-                                 velocity=velocity_x, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
-        self.axisY.move_absolute(target_y, Units.LENGTH_MILLIMETRES, wait_until_idle=False,
-                                 velocity=velocity_y, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
+        self.axisX.move_absolute(target_x, Units.LENGTH_MILLIMETRES, wait_until_idle=False)#,
+                                 # velocity=velocity_x, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
+        self.axisY.move_absolute(target_y, Units.LENGTH_MILLIMETRES, wait_until_idle=False)#,
+                                 # velocity=velocity_y, velocity_unit=Units.VELOCITY_MILLIMETRES_PER_SECOND)
 
     def draw(self):
         return
