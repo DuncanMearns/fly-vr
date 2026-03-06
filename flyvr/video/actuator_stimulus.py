@@ -143,9 +143,14 @@ class ActuatorStimulus:
 
         # Add pause to beginning
         pause_frames = np.zeros((int(pause * self.sample_rate), 4))
+        pause_frames[:, 1] = self.y_max
         pause_frames[:, -2:] = -1  # label = -1 for pause
 
-        sequence = [pause_frames]
+        # Add time for male to tap
+        tap_frames = np.zeros((int(5 * self.sample_rate), 4))
+        tap_frames[:, -2:] = -1  # label = -1 for pause
+
+        sequence = [pause_frames, tap_frames]
         parts = iter(parts)
         k = -1
         while True:
@@ -198,25 +203,25 @@ class ActuatorStimulus:
         return stimulus
 
 
-if __name__ == "__main__":
-    import yaml
-    from matplotlib import pyplot as plt
-    with open(r"C:\Users\murthylab\Desktop\Duncan_data\configs\duncan_experiment\actuator_config.yaml") as f:
-        config = yaml.safe_load(f)
-    stim = ActuatorStimulus(config)
-
-    xydt = stim(angles=[-15, 0, 15], distances=[1, 2, 3, 4, 5], amplitude=45, angular_speed=30, linear_speed=10, randomize=True, n_cycles=3, duration=0, n_repetitions=3, pause=5)
-
-    male_xyz = np.array([stim.actuator_x0, stim.actuator_y0 + stim.dy_mm, stim.dz_mm])
-    xyz = np.column_stack([xydt[:, :2], np.zeros(len(xydt))])
-
-    d = np.linalg.norm(xyz - male_xyz, axis=1)
-    plt.plot(xydt[:, 3])
-    plt.plot(xydt[:, 4])
-    plt.plot(xydt[:, 5])
-    # plt.plot(d)
-    # plt.plot(xydt[:, 0])
-    plt.show()
+# if __name__ == "__main__":
+#     import yaml
+#     from matplotlib import pyplot as plt
+#     with open(r"C:\Users\murthylab\Desktop\Duncan_data\configs\duncan_experiment\actuator_config.yaml") as f:
+#         config = yaml.safe_load(f)
+#     stim = ActuatorStimulus(config)
+#
+#     xydt = stim(angles=[-15, 0, 15], distances=[1, 2, 3, 4, 5], amplitude=45, angular_speed=30, linear_speed=10, randomize=True, n_cycles=3, duration=0, n_repetitions=3, pause=5)
+#
+#     male_xyz = np.array([stim.actuator_x0, stim.actuator_y0 + stim.dy_mm, stim.dz_mm])
+#     xyz = np.column_stack([xydt[:, :2], np.zeros(len(xydt))])
+#
+#     d = np.linalg.norm(xyz - male_xyz, axis=1)
+#     plt.plot(xydt[:, 3])
+#     plt.plot(xydt[:, 4])
+#     plt.plot(xydt[:, 5])
+#     # plt.plot(d)
+#     # plt.plot(xydt[:, 0])
+#     plt.show()
 
     # fig, ax = plt.subplots()
     # ax.plot(*xydt[:, :2].T)

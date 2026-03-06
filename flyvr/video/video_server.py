@@ -477,7 +477,8 @@ class ActuatorStimDSM(VideoStim):
                  'y_position_mm',
                  'target_angle_degrees',
                  'target_distance_mm',
-                 'stimulus_phase'
+                 'stimulus_phase',
+                 'stimulus_index'
                  )
     '''Control a real female on an actuator.'''
 
